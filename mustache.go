@@ -844,6 +844,8 @@ func (sp *StaticProvider) Get(name string) (string, error) {
 
 var _ PartialProvider = (*StaticProvider)(nil)
 
+var nonEmptyLine = regexp.MustCompile(`(?m:^(.+)$)`)
+
 func getPartials(partials PartialProvider, name, indent string) (*Template, error) {
 	data, err := partials.Get(name)
 	if err != nil {
@@ -851,8 +853,6 @@ func getPartials(partials PartialProvider, name, indent string) (*Template, erro
 	}
 
 	// indent non empty lines
-	r := regexp.MustCompile(`(?m:^(.+)$)`)
-	data = r.ReplaceAllString(data, indent+"$1")
-
+	data = nonEmptyLine.ReplaceAllString(data, indent+"$1")
 	return ParseStringPartials(data, partials)
 }
