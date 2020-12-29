@@ -1,4 +1,4 @@
-package mustache
+package template_test
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"zettelstore.de/z/template"
 )
 
 var enabledTests = map[string]map[string]bool{
@@ -206,9 +208,9 @@ func runTest(t *testing.T, file string, test *specTest) {
 	var out string
 	var err error
 	if len(test.Partials) > 0 {
-		out, err = RenderPartials(test.Template, &StaticProvider{test.Partials}, test.Data)
+		out, err = template.RenderPartials(test.Template, &template.StaticProvider{test.Partials}, test.Data)
 	} else {
-		out, err = Render(test.Template, test.Data)
+		out, err = template.Render(test.Template, test.Data)
 	}
 	if err != nil {
 		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())

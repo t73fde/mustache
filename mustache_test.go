@@ -1,4 +1,4 @@
-package mustache
+package template_test
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"path"
 	"strings"
 	"testing"
+
+	"zettelstore.de/z/template"
 )
 
 type Test struct {
@@ -189,7 +191,7 @@ var tests = []Test{
 func TestBasic(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%q expected %q but got error %q", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -198,10 +200,10 @@ func TestBasic(t *testing.T) {
 	}
 
 	// Now set AllowMissingVariables=false and test again
-	AllowMissingVariables = false
-	defer func() { AllowMissingVariables = true }()
+	template.AllowMissingVariables = false
+	defer func() { template.AllowMissingVariables = true }()
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%s expected %s but got error %s", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -224,7 +226,7 @@ var missing = []Test{
 func TestMissing(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range missing {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -233,10 +235,10 @@ func TestMissing(t *testing.T) {
 	}
 
 	// Now set AllowMissingVariables=false and confirm we get errors.
-	AllowMissingVariables = false
-	defer func() { AllowMissingVariables = true }()
+	template.AllowMissingVariables = false
+	defer func() { template.AllowMissingVariables = true }()
 	for _, test := range missing {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err == nil {
 			t.Errorf("%q expected missing variable error but got %q", test.tmpl, output)
 		} else if !strings.Contains(err.Error(), "Missing variable") {
@@ -248,7 +250,7 @@ func TestMissing(t *testing.T) {
 func TestFile(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
 	expected := "hello world"
-	output, err := RenderFile(filename, map[string]string{"name": "world"})
+	output, err := template.RenderFile(filename, map[string]string{"name": "world"})
 	if err != nil {
 		t.Error(err)
 	} else if output != expected {
@@ -259,7 +261,7 @@ func TestFile(t *testing.T) {
 func TestFRender(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
 	expected := "hello world"
-	tmpl, err := ParseFile(filename)
+	tmpl, err := template.ParseFile(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +279,7 @@ func TestFRender(t *testing.T) {
 func TestPartial(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test2.mustache")
 	expected := "hello world"
-	tmpl, err := ParseFile(filename)
+	tmpl, err := template.ParseFile(filename)
 	if err != nil {
 		t.Error(err)
 		return
@@ -293,7 +295,7 @@ func TestPartial(t *testing.T) {
 
 	expectedTags := []tag{
 		{
-			Type: Partial,
+			Type: template.Partial,
 			Name: "partial",
 		},
 	}
@@ -312,12 +314,12 @@ func TestSectionPartial(t *testing.T) {
 }
 */
 func TestMultiContext(t *testing.T) {
-	output, err := Render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
+	output, err := template.Render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	output2, err := Render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
+	output2, err := template.Render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
 	if err != nil {
 		t.Error(err)
 		return
@@ -339,7 +341,7 @@ var malformed = []Test{
 
 func TestMalformed(t *testing.T) {
 	for _, test := range malformed {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err != nil {
 			if test.err == nil {
 				t.Error(err)
@@ -373,7 +375,7 @@ var layoutTests = []LayoutTest{
 
 func TestLayout(t *testing.T) {
 	for _, test := range layoutTests {
-		output, err := RenderInLayout(test.tmpl, test.layout, test.context)
+		output, err := template.RenderInLayout(test.tmpl, test.layout, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -384,12 +386,12 @@ func TestLayout(t *testing.T) {
 
 func TestLayoutToWriter(t *testing.T) {
 	for _, test := range layoutTests {
-		tmpl, err := ParseString(test.tmpl)
+		tmpl, err := template.ParseString(test.tmpl)
 		if err != nil {
 			t.Error(err)
 			continue
 		}
-		layoutTmpl, err := ParseString(test.layout)
+		layoutTmpl, err := template.ParseString(test.layout)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -446,7 +448,7 @@ func TestPointerReceiver(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := template.Render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -456,7 +458,7 @@ func TestPointerReceiver(t *testing.T) {
 }
 
 type tag struct {
-	Type TagType
+	Type template.TagType
 	Name string
 	Tags []tag
 }
@@ -475,7 +477,7 @@ var tagTests = []tagsTest{
 		tmpl: `hello {{name}}`,
 		tags: []tag{
 			{
-				Type: Variable,
+				Type: template.Variable,
 				Name: "name",
 			},
 		},
@@ -484,21 +486,21 @@ var tagTests = []tagsTest{
 		tmpl: `{{#name}}hello {{name}}{{/name}}{{^name}}hello {{name2}}{{/name}}`,
 		tags: []tag{
 			{
-				Type: Section,
+				Type: template.Section,
 				Name: "name",
 				Tags: []tag{
 					{
-						Type: Variable,
+						Type: template.Variable,
 						Name: "name",
 					},
 				},
 			},
 			{
-				Type: InvertedSection,
+				Type: template.InvertedSection,
 				Name: "name",
 				Tags: []tag{
 					{
-						Type: Variable,
+						Type: template.Variable,
 						Name: "name2",
 					},
 				},
@@ -514,7 +516,7 @@ func TestTags(t *testing.T) {
 }
 
 func testTags(t *testing.T, test *tagsTest) {
-	tmpl, err := ParseString(test.tmpl)
+	tmpl, err := template.ParseString(test.tmpl)
 	if err != nil {
 		t.Error(err)
 		return
@@ -522,7 +524,7 @@ func testTags(t *testing.T, test *tagsTest) {
 	compareTags(t, tmpl.Tags(), test.tags)
 }
 
-func compareTags(t *testing.T, actual []Tag, expected []tag) {
+func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
 	if len(actual) != len(expected) {
 		t.Errorf("expected %d tags, got %d", len(expected), len(actual))
 		return
@@ -538,16 +540,16 @@ func compareTags(t *testing.T, actual []Tag, expected []tag) {
 		}
 
 		switch tag.Type() {
-		case Variable:
+		case template.Variable:
 			if len(expected[i].Tags) != 0 {
 				t.Errorf("expected %d tags, got 0", len(expected[i].Tags))
 				return
 			}
-		case Section, InvertedSection:
+		case template.Section, template.InvertedSection:
 			compareTags(t, tag.Tags(), expected[i].Tags)
-		case Partial:
+		case template.Partial:
 			compareTags(t, tag.Tags(), expected[i].Tags)
-		case Invalid:
+		case template.Invalid:
 			t.Errorf("invalid tag type: %s", tag.Type())
 			return
 		default:

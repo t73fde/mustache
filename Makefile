@@ -1,33 +1,25 @@
-export GOFLAGS := -mod=vendor
 
-.PHONY: all
-all: bin/mustache
+## Copyright (c) 2020 Detlef Stern
+##
+## This file is part of zettelstore.
+##
+## Zettelstore is licensed under the latest version of the EUPL (European Union
+## Public License). Please see file LICENSE.txt for your rights and obligations
+## under this license.
 
-.PHONY: clean
-clean:
-	rm -rf bin
+.PHONY: test check validate race clean
 
-.PHONY: ci
-ci: fmt lint test
-
-.PHONY: test
 test:
-	go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+	go test ./...
 
-.PHONY: fmt
-fmt:
-	go fmt ./...
+check:
+	go vet ./...
+	~/go/bin/golint ./...
 
-.PHONY: lint
-lint: bin/golangci-lint
-	./bin/golangci-lint run ./...
+validate: test check
 
-SOURCES     := $(shell find . -name '*.go')
-BUILD_FLAGS ?= -v
-LDFLAGS     ?= -w -s
+race:
+	go test -race ./...
 
-bin/golangci-lint: $(SOURCES)
-	go build -o bin/golangci-lint ./vendor/github.com/golangci/golangci-lint/cmd/golangci-lint
-
-bin/%: $(SOURCES)
-	CGO_ENABLED=0 go build -o $@ $(BUILD_FLAGS) -ldflags "$(LDFLAGS)" ./cmd/$(@F)
+clean:
+	rm -rf bin releases

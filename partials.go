@@ -1,4 +1,4 @@
-package mustache
+package template
 
 import (
 	"io/ioutil"
