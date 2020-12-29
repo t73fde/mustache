@@ -750,5 +750,3 @@ func (fp *fileProvider) Get(name string) (string, error) {
 
 	return string(data), nil
 }
-
-var _ PartialProvider = (*fileProvider)(nil)

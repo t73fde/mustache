@@ -713,13 +713,7 @@ func ParseString(data string) (*Template, error) {
 // be used to efficiently render the template multiple times with different
 // data sources.
 func ParseStringRaw(data string, forceRaw bool) (*Template, error) {
-	//cwd := os.Getenv("CWD")
-	//partials := &FileProvider{
-	//	Paths: []string{cwd, " "},
-	//}
-	partials := &StaticProvider{}
-
-	return ParseStringPartialsRaw(data, partials, forceRaw)
+	return ParseStringPartialsRaw(data, &EmptyProvider, forceRaw)
 }
 
 // ParseStringPartials compiles a mustache template string, retrieving any
@@ -753,6 +747,15 @@ type PartialProvider interface {
 	Get(name string) (string, error)
 }
 
+// ErrPartialNotFound is returned if a partial was not found.
+type ErrPartialNotFound struct {
+	Name string
+}
+
+func (err *ErrPartialNotFound) Error() string {
+	return "Partial '" + err.Name + "' not found"
+}
+
 // StaticProvider implements the PartialProvider interface by providing
 // partials drawn from a map, which maps partial name to template contents.
 type StaticProvider struct {
@@ -767,10 +770,17 @@ func (sp *StaticProvider) Get(name string) (string, error) {
 		}
 	}
 
-	return "", nil
+	return "", &ErrPartialNotFound{name}
 }
 
-var _ PartialProvider = (*StaticProvider)(nil)
+// emptyProvider will always returns an empty string.
+type emptyProvider struct{}
+
+// Get accepts the name of a partial and returns the parsed partial.
+func (ep *emptyProvider) Get(name string) (string, error) { return "", nil }
+
+// EmptyProvider is a partial provider that will always return an empty string.
+var EmptyProvider emptyProvider
 
 var nonEmptyLine = regexp.MustCompile(`(?m:^(.+)$)`)
 
