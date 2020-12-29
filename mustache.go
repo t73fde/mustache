@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
-	"os"
-	"path"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -15,8 +12,8 @@ import (
 )
 
 var (
-	// AllowMissingVariables defines the behavior for a variable "miss." If it
-	// is true (the default), an empty string is emitted. If it is false, an error
+	// AllowMissingVariables defines the behavior for a variable "miss." If it is
+	// true (the default), an empty string is emitted. If it is false, an error
 	// is generated instead.
 	AllowMissingVariables = true
 )
@@ -34,8 +31,8 @@ const (
 	Partial
 )
 
-// Skip all whitespaces apeared after these types of tags until end of line
-// if the line only contains a tag and whitespaces.
+// Skip all whitespaces apeared after these types of tags until end of line if
+// the line only contains a tag and whitespaces.
 const (
 	SkipWhitespaceTagTypes = "#^/<>=!"
 )
@@ -93,7 +90,7 @@ type partialElement struct {
 	prov   PartialProvider
 }
 
-// Template represents a compilde mustache template
+// Template represents a compiled mustache template
 type Template struct {
 	data     string
 	otag     string
@@ -467,8 +464,9 @@ func (tmpl *Template) parse() error {
 	}
 }
 
-// Evaluate interfaces and pointers looking for a value that can look up the name, via a
-// struct field, method, or map key, and return the result of the lookup.
+// Evaluate interfaces and pointers looking for a value that can look up the
+// name, via a struct field, method, or map key, and return the result of the
+// lookup.
 func lookup(contextChain []interface{}, name string, allowMissing bool) (reflect.Value, error) {
 	// dot notation
 	if name != "." && strings.Contains(name, ".") {
@@ -660,8 +658,8 @@ func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) 
 	return nil
 }
 
-// FRender uses the given data source - generally a map or struct - to
-// render the compiled template to an io.Writer.
+// FRender uses the given data source - generally a map or struct - to render
+// the compiled template to an io.Writer.
 func (tmpl *Template) FRender(out io.Writer, context ...interface{}) error {
 	var contextChain []interface{}
 	for _, c := range context {
@@ -691,9 +689,8 @@ func (tmpl *Template) RenderInLayout(layout *Template, context ...interface{}) (
 	return buf.String(), nil
 }
 
-// FRenderInLayout uses the given data source - generally a map or
-// struct - to render the compiled templated a loayout "wrapper"
-// template to an io.Writer.
+// FRenderInLayout uses the given data source - generally a map or struct - to
+// render the compiled templated a loayout "wrapper" template to an io.Writer.
 func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context ...interface{}) error {
 	content, err := tmpl.Render(context...)
 	if err != nil {
@@ -705,21 +702,22 @@ func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context .
 	return layout.FRender(out, allContext...)
 }
 
-// ParseString compiles a mustache template string. The resulting output can
-// be used to efficiently render the template multiple times with different data
+// ParseString compiles a mustache template string. The resulting output can be
+// used to efficiently render the template multiple times with different data
 // sources.
 func ParseString(data string) (*Template, error) {
 	return ParseStringRaw(data, false)
 }
 
 // ParseStringRaw compiles a mustache template string. The resulting output can
-// be used to efficiently render the template multiple times with different data
-// sources.
+// be used to efficiently render the template multiple times with different
+// data sources.
 func ParseStringRaw(data string, forceRaw bool) (*Template, error) {
-	cwd := os.Getenv("CWD")
-	partials := &FileProvider{
-		Paths: []string{cwd, " "},
-	}
+	//cwd := os.Getenv("CWD")
+	//partials := &FileProvider{
+	//	Paths: []string{cwd, " "},
+	//}
+	partials := &StaticProvider{}
 
 	return ParseStringPartialsRaw(data, partials, forceRaw)
 }
@@ -739,56 +737,15 @@ func ParseStringPartials(data string, partials PartialProvider) (*Template, erro
 func ParseStringPartialsRaw(data string, partials PartialProvider, forceRaw bool) (*Template, error) {
 	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, forceRaw, partials}
 	err := tmpl.parse()
-
 	if err != nil {
 		return nil, err
 	}
-
 	return &tmpl, err
 }
 
-// ParseFile loads a mustache template string from a file and compiles it. The
-// resulting output can be used to efficiently render the template multiple
-// times with different data sources.
-func ParseFile(filename string) (*Template, error) {
-	dirname, _ := path.Split(filename)
-	partials := &FileProvider{
-		Paths: []string{dirname, " "},
-	}
-
-	return ParseFilePartials(filename, partials)
-}
-
-// ParseFilePartials loads a mustache template string from a file, retrieving any
-// required partials from the given provider, and compiles it. The resulting
-// output can be used to efficiently render the template multiple times with
-// different data sources.
-func ParseFilePartials(filename string, partials PartialProvider) (*Template, error) {
-	return ParseFilePartialsRaw(filename, false, partials)
-}
-
-// ParseFilePartialsRaw loads a mustache template string from a file, retrieving
-// any required partials from the given provider, and compiles it. The resulting
-// output can be used to efficiently render the template multiple times with
-// different data sources.
-func ParseFilePartialsRaw(filename string, forceRaw bool, partials PartialProvider) (*Template, error) {
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	tmpl := Template{string(data), "{{", "}}", 0, 1, []interface{}{}, forceRaw, partials}
-	err = tmpl.parse()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &tmpl, nil
-}
-
-// Render compiles a mustache template string and uses the the given data source
-// - generally a map or struct - to render the template and return the output.
+// Render compiles a mustache template string and uses the the given data
+// source - generally a map or struct - to render the template and return the
+// output.
 func Render(data string, context ...interface{}) (string, error) {
 	return RenderRaw(data, false, context...)
 }
@@ -800,9 +757,9 @@ func RenderRaw(data string, forceRaw bool, context ...interface{}) (string, erro
 	return RenderPartialsRaw(data, nil, forceRaw, context...)
 }
 
-// RenderPartials compiles a mustache template string and uses the the given partial
-// provider and data source - generally a map or struct - to render the template
-// and return the output.
+// RenderPartials compiles a mustache template string and uses the the given
+// partial provider and data source - generally a map or struct - to render the
+// template and return the output.
 func RenderPartials(data string, partials PartialProvider, context ...interface{}) (string, error) {
 	return RenderPartialsRaw(data, partials, false, context...)
 }
@@ -851,7 +808,6 @@ func RenderInLayoutPartials(data string, layoutData string, partials PartialProv
 	} else {
 		tmpl, err = ParseStringPartials(data, partials)
 	}
-
 	if err != nil {
 		return "", err
 	}
@@ -859,98 +815,18 @@ func RenderInLayoutPartials(data string, layoutData string, partials PartialProv
 	return tmpl.RenderInLayout(layoutTmpl, context...)
 }
 
-// RenderFile loads a mustache template string from a file and compiles it, and
-// then uses the the given data source - generally a map or struct - to render
-// the template and return the output.
-func RenderFile(filename string, context ...interface{}) (string, error) {
-	tmpl, err := ParseFile(filename)
-	if err != nil {
-		return "", err
-	}
-	return tmpl.Render(context...)
-}
-
-// RenderFileInLayout loads a mustache template string and layout "wrapper"
-// template string from files and compiles them, and  then uses the the given
-// data source - generally a map or struct - to render the compiled templates
-// and return the output.
-func RenderFileInLayout(filename string, layoutFile string, context ...interface{}) (string, error) {
-	layoutTmpl, err := ParseFile(layoutFile)
-	if err != nil {
-		return "", err
-	}
-
-	tmpl, err := ParseFile(filename)
-	if err != nil {
-		return "", err
-	}
-	return tmpl.RenderInLayout(layoutTmpl, context...)
-}
-
-// PartialProvider comprises the behaviors required of a struct to be able to provide partials to the mustache rendering
-// engine.
+// PartialProvider comprises the behaviors required of a struct to be able to
+// provide partials to the mustache rendering engine.
 type PartialProvider interface {
-	// Get accepts the name of a partial and returns the parsed partial, if it could be found; a valid but empty
-	// template, if it could not be found; or nil and error if an error occurred (other than an inability to find
-	// the partial).
+	// Get accepts the name of a partial and returns the parsed partial, if it
+	// could be found; a valid but empty template, if it could not be found; or
+	// nil and error if an error occurred (other than an inability to find the
+	// partial).
 	Get(name string) (string, error)
 }
 
-// FileProvider implements the PartialProvider interface by providing partials drawn from a filesystem. When a partial
-// named `NAME`  is requested, FileProvider searches each listed path for a file named as `NAME` followed by any of the
-// listed extensions. The default for `Paths` is to search the current working directory. The default for `Extensions`
-// is to examine, in order, no extension; then ".mustache"; then ".stache".
-type FileProvider struct {
-	Paths      []string
-	Extensions []string
-}
-
-// Get accepts the name of a partial and returns the parsed partial.
-func (fp *FileProvider) Get(name string) (string, error) {
-	var filename string
-
-	var paths []string
-	if fp.Paths != nil {
-		paths = fp.Paths
-	} else {
-		paths = []string{""}
-	}
-
-	var exts []string
-	if fp.Extensions != nil {
-		exts = fp.Extensions
-	} else {
-		exts = []string{"", ".mustache", ".stache"}
-	}
-
-	for _, p := range paths {
-		for _, e := range exts {
-			name := path.Join(p, name+e)
-			f, err := os.Open(name)
-			if err == nil {
-				filename = name
-				f.Close()
-				break
-			}
-		}
-	}
-
-	if filename == "" {
-		return "", nil
-	}
-
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return "", err
-	}
-
-	return string(data), nil
-}
-
-var _ PartialProvider = (*FileProvider)(nil)
-
-// StaticProvider implements the PartialProvider interface by providing partials drawn from a map, which maps partial
-// name to template contents.
+// StaticProvider implements the PartialProvider interface by providing
+// partials drawn from a map, which maps partial name to template contents.
 type StaticProvider struct {
 	Partials map[string]string
 }

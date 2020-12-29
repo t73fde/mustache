@@ -1,14 +1,13 @@
-package template_test
+package template
 
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 	"testing"
-
-	"zettelstore.de/z/template"
 )
 
 type Test struct {
@@ -191,7 +190,7 @@ var tests = []Test{
 func TestBasic(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range tests {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%q expected %q but got error %q", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -200,10 +199,10 @@ func TestBasic(t *testing.T) {
 	}
 
 	// Now set AllowMissingVariables=false and test again
-	template.AllowMissingVariables = false
-	defer func() { template.AllowMissingVariables = true }()
+	AllowMissingVariables = false
+	defer func() { AllowMissingVariables = true }()
 	for _, test := range tests {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%s expected %s but got error %s", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -226,7 +225,7 @@ var missing = []Test{
 func TestMissing(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range missing {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -235,10 +234,10 @@ func TestMissing(t *testing.T) {
 	}
 
 	// Now set AllowMissingVariables=false and confirm we get errors.
-	template.AllowMissingVariables = false
-	defer func() { template.AllowMissingVariables = true }()
+	AllowMissingVariables = false
+	defer func() { AllowMissingVariables = true }()
 	for _, test := range missing {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err == nil {
 			t.Errorf("%q expected missing variable error but got %q", test.tmpl, output)
 		} else if !strings.Contains(err.Error(), "Missing variable") {
@@ -250,7 +249,7 @@ func TestMissing(t *testing.T) {
 func TestFile(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
 	expected := "hello world"
-	output, err := template.RenderFile(filename, map[string]string{"name": "world"})
+	output, err := renderFile(filename, map[string]string{"name": "world"})
 	if err != nil {
 		t.Error(err)
 	} else if output != expected {
@@ -261,7 +260,7 @@ func TestFile(t *testing.T) {
 func TestFRender(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
 	expected := "hello world"
-	tmpl, err := template.ParseFile(filename)
+	tmpl, err := parseFile(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +278,7 @@ func TestFRender(t *testing.T) {
 func TestPartial(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test2.mustache")
 	expected := "hello world"
-	tmpl, err := template.ParseFile(filename)
+	tmpl, err := parseFile(filename)
 	if err != nil {
 		t.Error(err)
 		return
@@ -295,7 +294,7 @@ func TestPartial(t *testing.T) {
 
 	expectedTags := []tag{
 		{
-			Type: template.Partial,
+			Type: Partial,
 			Name: "partial",
 		},
 	}
@@ -314,12 +313,12 @@ func TestSectionPartial(t *testing.T) {
 }
 */
 func TestMultiContext(t *testing.T) {
-	output, err := template.Render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
+	output, err := Render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	output2, err := template.Render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
+	output2, err := Render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
 	if err != nil {
 		t.Error(err)
 		return
@@ -341,7 +340,7 @@ var malformed = []Test{
 
 func TestMalformed(t *testing.T) {
 	for _, test := range malformed {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err != nil {
 			if test.err == nil {
 				t.Error(err)
@@ -375,7 +374,7 @@ var layoutTests = []LayoutTest{
 
 func TestLayout(t *testing.T) {
 	for _, test := range layoutTests {
-		output, err := template.RenderInLayout(test.tmpl, test.layout, test.context)
+		output, err := RenderInLayout(test.tmpl, test.layout, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -386,12 +385,12 @@ func TestLayout(t *testing.T) {
 
 func TestLayoutToWriter(t *testing.T) {
 	for _, test := range layoutTests {
-		tmpl, err := template.ParseString(test.tmpl)
+		tmpl, err := ParseString(test.tmpl)
 		if err != nil {
 			t.Error(err)
 			continue
 		}
-		layoutTmpl, err := template.ParseString(test.layout)
+		layoutTmpl, err := ParseString(test.layout)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -448,7 +447,7 @@ func TestPointerReceiver(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		output, err := template.Render(test.tmpl, test.context)
+		output, err := Render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -458,7 +457,7 @@ func TestPointerReceiver(t *testing.T) {
 }
 
 type tag struct {
-	Type template.TagType
+	Type TagType
 	Name string
 	Tags []tag
 }
@@ -477,7 +476,7 @@ var tagTests = []tagsTest{
 		tmpl: `hello {{name}}`,
 		tags: []tag{
 			{
-				Type: template.Variable,
+				Type: Variable,
 				Name: "name",
 			},
 		},
@@ -486,21 +485,21 @@ var tagTests = []tagsTest{
 		tmpl: `{{#name}}hello {{name}}{{/name}}{{^name}}hello {{name2}}{{/name}}`,
 		tags: []tag{
 			{
-				Type: template.Section,
+				Type: Section,
 				Name: "name",
 				Tags: []tag{
 					{
-						Type: template.Variable,
+						Type: Variable,
 						Name: "name",
 					},
 				},
 			},
 			{
-				Type: template.InvertedSection,
+				Type: InvertedSection,
 				Name: "name",
 				Tags: []tag{
 					{
-						Type: template.Variable,
+						Type: Variable,
 						Name: "name2",
 					},
 				},
@@ -516,7 +515,7 @@ func TestTags(t *testing.T) {
 }
 
 func testTags(t *testing.T, test *tagsTest) {
-	tmpl, err := template.ParseString(test.tmpl)
+	tmpl, err := ParseString(test.tmpl)
 	if err != nil {
 		t.Error(err)
 		return
@@ -524,7 +523,7 @@ func testTags(t *testing.T, test *tagsTest) {
 	compareTags(t, tmpl.Tags(), test.tags)
 }
 
-func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
+func compareTags(t *testing.T, actual []Tag, expected []tag) {
 	if len(actual) != len(expected) {
 		t.Errorf("expected %d tags, got %d", len(expected), len(actual))
 		return
@@ -540,16 +539,16 @@ func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
 		}
 
 		switch tag.Type() {
-		case template.Variable:
+		case Variable:
 			if len(expected[i].Tags) != 0 {
 				t.Errorf("expected %d tags, got 0", len(expected[i].Tags))
 				return
 			}
-		case template.Section, template.InvertedSection:
+		case Section, InvertedSection:
 			compareTags(t, tag.Tags(), expected[i].Tags)
-		case template.Partial:
+		case Partial:
 			compareTags(t, tag.Tags(), expected[i].Tags)
-		case template.Invalid:
+		case Invalid:
 			t.Errorf("invalid tag type: %s", tag.Type())
 			return
 		default:
@@ -558,3 +557,126 @@ func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
 		}
 	}
 }
+
+// ParseFile loads a mustache template string from a file and compiles it. The
+// resulting output can be used to efficiently render the template multiple
+// times with different data sources.
+func parseFile(filename string) (*Template, error) {
+	dirname, _ := path.Split(filename)
+	partials := &fileProvider{
+		Paths: []string{dirname, " "},
+	}
+
+	return parseFilePartials(filename, partials)
+}
+
+// ParseFilePartials loads a mustache template string from a file, retrieving
+// any required partials from the given provider, and compiles it. The
+// resulting output can be used to efficiently render the template multiple
+// times with different data sources.
+func parseFilePartials(filename string, partials PartialProvider) (*Template, error) {
+	return parseFilePartialsRaw(filename, false, partials)
+}
+
+// ParseFilePartialsRaw loads a mustache template string from a file,
+// retrieving any required partials from the given provider, and compiles it.
+// The resulting output can be used to efficiently render the template multiple
+// times with different data sources.
+func parseFilePartialsRaw(filename string, forceRaw bool, partials PartialProvider) (*Template, error) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpl := Template{string(data), "{{", "}}", 0, 1, []interface{}{}, forceRaw, partials}
+	err = tmpl.parse()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &tmpl, nil
+}
+
+// RenderFile loads a mustache template string from a file and compiles it, and
+// then uses the the given data source - generally a map or struct - to render
+// the template and return the output.
+func renderFile(filename string, context ...interface{}) (string, error) {
+	tmpl, err := parseFile(filename)
+	if err != nil {
+		return "", err
+	}
+	return tmpl.Render(context...)
+}
+
+// RenderFileInLayout loads a mustache template string and layout "wrapper"
+// template string from files and compiles them, and  then uses the the given
+// data source - generally a map or struct - to render the compiled templates
+// and return the output.
+func renderFileInLayout(filename string, layoutFile string, context ...interface{}) (string, error) {
+	layoutTmpl, err := parseFile(layoutFile)
+	if err != nil {
+		return "", err
+	}
+
+	tmpl, err := parseFile(filename)
+	if err != nil {
+		return "", err
+	}
+	return tmpl.RenderInLayout(layoutTmpl, context...)
+}
+
+// FileProvider implements the PartialProvider interface by providing partials
+// drawn from a filesystem. When a partial named `NAME`  is requested,
+// FileProvider searches each listed path for a file named as `NAME` followed
+// by any of the listed extensions. The default for `Paths` is to search the
+// current working directory. The default for `Extensions` is to examine, in
+// order, no extension; then ".mustache"; then ".stache".
+type fileProvider struct {
+	Paths      []string
+	Extensions []string
+}
+
+// Get accepts the name of a partial and returns the parsed partial.
+func (fp *fileProvider) Get(name string) (string, error) {
+	var filename string
+
+	var paths []string
+	if fp.Paths != nil {
+		paths = fp.Paths
+	} else {
+		paths = []string{""}
+	}
+
+	var exts []string
+	if fp.Extensions != nil {
+		exts = fp.Extensions
+	} else {
+		exts = []string{"", ".mustache", ".stache"}
+	}
+
+	for _, p := range paths {
+		for _, e := range exts {
+			name := path.Join(p, name+e)
+			f, err := os.Open(name)
+			if err == nil {
+				filename = name
+				f.Close()
+				break
+			}
+		}
+	}
+
+	if filename == "" {
+		return "", nil
+	}
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+
+	return string(data), nil
+}
+
+var _ PartialProvider = (*fileProvider)(nil)
