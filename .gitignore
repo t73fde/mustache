@@ -1,15 +1,27 @@
-*.6
-*.8
-*.o
+# ---> Go
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
 *.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
-*.go~
-*.cgo?.*
-_cgo_*
-_obj
-_test
-_testmain.go
-*.swp
-coverage.txt
-/bin
-/dist
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# bin and release folder, where builds and releases go
+bin/
+releases/
+
+# IDE settings
+.vscode
+cmd/zettelstore/__debug_bin
+
+# zettelstor config file
+.zscfg
