@@ -1,4 +1,24 @@
-package template
+//-----------------------------------------------------------------------------
+// Copyright (c) 2020 Detlef Stern
+//
+// This file is part of zettelstore.
+//
+// Zettelstore is licensed under the latest version of the EUPL (European Union
+// Public License). Please see file LICENSE.txt for your rights and obligations
+// under this license.
+//
+// This file was derived from previous work:
+// - https://github.com/hoisie/mustache (License: MIT)
+//   Copyright (c) 2009 Michael Hoisie
+// - https://github.com/cbroglie/mustache (a fork from above code)
+//   Starting with commit [f9b4cbf]
+//   Does not have an explicit copyright and obviously continues with
+//   above MIT license.
+// The license text is included in the same directory where this file is
+// located. See file LICENSE.
+//-----------------------------------------------------------------------------
+
+package template_test
 
 import (
 	"encoding/json"
@@ -7,6 +27,8 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+
+	"zettelstore.de/z/template"
 )
 
 var enabledTests = map[string]map[string]bool{
@@ -153,16 +175,24 @@ type specTestSuite struct {
 	Tests []specTest `json:"tests"`
 }
 
+func getRoot() string {
+	curDir, err := os.Getwd()
+	if err != nil {
+		curDir = os.Getenv("PWD")
+	}
+	return filepath.Join(curDir, "testdata", "mustache")
+}
+
 func TestSpec(t *testing.T) {
-	root := filepath.Join(os.Getenv("PWD"), "spec", "specs")
+	root := getRoot()
 	if _, err := os.Stat(root); err != nil {
 		if os.IsNotExist(err) {
-			t.Fatalf("Could not find the specs folder at %s, ensure the submodule exists by running 'git submodule update --init'", root)
+			t.Fatalf("Could not find the mustache testdata folder at %s'", root)
 		}
 		t.Fatal(err)
 	}
 
-	paths, err := filepath.Glob(root + "/*.json")
+	paths, err := filepath.Glob(filepath.Join(root, "*.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,6 +223,13 @@ func TestSpec(t *testing.T) {
 	}
 }
 
+func selectProvider(partials map[string]string) template.PartialProvider {
+	if len(partials) == 0 {
+		return &template.EmptyProvider
+	}
+	return &template.StaticProvider{partials}
+}
+
 func runTest(t *testing.T, file string, test *specTest) {
 	enabled, ok := enabledTests[file][test.Name]
 	if !ok {
@@ -203,13 +240,12 @@ func runTest(t *testing.T, file string, test *specTest) {
 		return
 	}
 
-	var out string
-	var err error
-	if len(test.Partials) > 0 {
-		out, err = renderPartials(test.Template, &StaticProvider{test.Partials}, test.Data)
-	} else {
-		out, err = render(test.Template, test.Data)
+	tmpl, err := template.ParseStringPartials(test.Template, selectProvider(test.Partials))
+	if err != nil {
+		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())
+		return
 	}
+	out, err := tmpl.Render(test.Data)
 	if err != nil {
 		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())
 		return
@@ -218,6 +254,5 @@ func runTest(t *testing.T, file string, test *specTest) {
 		t.Errorf("[%s %s]: Expected %q, got %q", file, test.Name, test.Expected, out)
 		return
 	}
-
 	t.Logf("[%s %s]: Passed", file, test.Name)
 }

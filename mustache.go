@@ -1,3 +1,23 @@
+//-----------------------------------------------------------------------------
+// Copyright (c) 2020 Detlef Stern
+//
+// This file is part of zettelstore.
+//
+// Zettelstore is licensed under the latest version of the EUPL (European Union
+// Public License). Please see file LICENSE.txt for your rights and obligations
+// under this license.
+//
+// This file was derived from previous work:
+// - https://github.com/hoisie/mustache (License: MIT)
+//   Copyright (c) 2009 Michael Hoisie
+// - https://github.com/cbroglie/mustache (a fork from above code)
+//   Starting with commit [f9b4cbf]
+//   Does not have an explicit copyright and obviously continues with
+//   above MIT license.
+// The license text is included in the same directory where this file is
+// located. See file LICENSE.
+//-----------------------------------------------------------------------------
+
 package template
 
 import (
