@@ -190,7 +190,7 @@ var tests = []Test{
 func TestBasic(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%q expected %q but got error %q", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -202,7 +202,7 @@ func TestBasic(t *testing.T) {
 	AllowMissingVariables = false
 	defer func() { AllowMissingVariables = true }()
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err != nil {
 			t.Errorf("%s expected %s but got error %s", test.tmpl, test.expected, err.Error())
 		} else if output != test.expected {
@@ -225,7 +225,7 @@ var missing = []Test{
 func TestMissing(t *testing.T) {
 	// Default behavior, AllowMissingVariables=true
 	for _, test := range missing {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -237,7 +237,7 @@ func TestMissing(t *testing.T) {
 	AllowMissingVariables = false
 	defer func() { AllowMissingVariables = true }()
 	for _, test := range missing {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err == nil {
 			t.Errorf("%q expected missing variable error but got %q", test.tmpl, output)
 		} else if !strings.Contains(err.Error(), "Missing variable") {
@@ -313,12 +313,12 @@ func TestSectionPartial(t *testing.T) {
 }
 */
 func TestMultiContext(t *testing.T) {
-	output, err := Render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
+	output, err := render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	output2, err := Render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
+	output2, err := render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
 	if err != nil {
 		t.Error(err)
 		return
@@ -340,7 +340,7 @@ var malformed = []Test{
 
 func TestMalformed(t *testing.T) {
 	for _, test := range malformed {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err != nil {
 			if test.err == nil {
 				t.Error(err)
@@ -374,7 +374,7 @@ var layoutTests = []LayoutTest{
 
 func TestLayout(t *testing.T) {
 	for _, test := range layoutTests {
-		output, err := RenderInLayout(test.tmpl, test.layout, test.context)
+		output, err := renderInLayout(test.tmpl, test.layout, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -447,7 +447,7 @@ func TestPointerReceiver(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		output, err := Render(test.tmpl, test.context)
+		output, err := render(test.tmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -596,6 +596,78 @@ func parseFilePartialsRaw(filename string, forceRaw bool, partials PartialProvid
 	}
 
 	return &tmpl, nil
+}
+
+// Render compiles a mustache template string and uses the the given data
+// source - generally a map or struct - to render the template and return the
+// output.
+func render(data string, context ...interface{}) (string, error) {
+	return renderRaw(data, false, context...)
+}
+
+// RenderRaw compiles a mustache template string and uses the the given data
+// source - generally a map or struct - to render the template and return the
+// output.
+func renderRaw(data string, forceRaw bool, context ...interface{}) (string, error) {
+	return renderPartialsRaw(data, nil, forceRaw, context...)
+}
+
+// RenderPartials compiles a mustache template string and uses the the given
+// partial provider and data source - generally a map or struct - to render the
+// template and return the output.
+func renderPartials(data string, partials PartialProvider, context ...interface{}) (string, error) {
+	return renderPartialsRaw(data, partials, false, context...)
+}
+
+// RenderPartialsRaw compiles a mustache template string and uses the the given
+// partial provider and data source - generally a map or struct - to render the
+// template and return the output.
+func renderPartialsRaw(data string, partials PartialProvider, forceRaw bool, context ...interface{}) (string, error) {
+	var tmpl *Template
+	var err error
+	if partials == nil {
+		tmpl, err = ParseStringRaw(data, forceRaw)
+	} else {
+		tmpl, err = ParseStringPartialsRaw(data, partials, forceRaw)
+	}
+	if err != nil {
+		return "", err
+	}
+	return tmpl.Render(context...)
+}
+
+// RenderInLayout compiles a mustache template string and layout "wrapper" and
+// uses the given data source - generally a map or struct - to render the
+// compiled templates and return the output.
+func renderInLayout(data string, layoutData string, context ...interface{}) (string, error) {
+	return renderInLayoutPartials(data, layoutData, nil, context...)
+}
+
+// RenderInLayoutPartials compiles a mustache template string and layout
+// "wrapper" and uses the given data source - generally a map or struct - to
+// render the compiled templates and return the output.
+func renderInLayoutPartials(data string, layoutData string, partials PartialProvider, context ...interface{}) (string, error) {
+	var layoutTmpl, tmpl *Template
+	var err error
+	if partials == nil {
+		layoutTmpl, err = ParseString(layoutData)
+	} else {
+		layoutTmpl, err = ParseStringPartials(layoutData, partials)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	if partials == nil {
+		tmpl, err = ParseString(data)
+	} else {
+		tmpl, err = ParseStringPartials(data, partials)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return tmpl.RenderInLayout(layoutTmpl, context...)
 }
 
 // RenderFile loads a mustache template string from a file and compiles it, and
