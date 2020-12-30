@@ -206,32 +206,32 @@ var tests = []Test{
 	{`"{{#a}}{{b.c.d.e.name}}{{/a}}" == "Phil"`, map[string]interface{}{"a": map[string]interface{}{"b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Phil"}}}}}, "b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Wrong"}}}}}, `"Phil" == "Phil"`, nil},
 }
 
-func render(data string, context ...interface{}) (string, error) {
+func render(data string, errMissing bool, context ...interface{}) (string, error) {
 	tmpl, err := template.ParseString(data)
 	if err != nil {
 		return "", err
+	}
+	if errMissing {
+		tmpl.SetErrorOnMissing()
 	}
 	return tmpl.Render(context...)
 }
 
 func TestBasic(t *testing.T) {
-	// Default behavior, AllowMissingVariables=true
 	for _, test := range tests {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, false, test.context)
 		if err != nil {
-			t.Errorf("%q expected %q but got error %q", test.tmpl, test.expected, err.Error())
+			t.Errorf("%q expected %q but got error: %v", test.tmpl, test.expected, err)
 		} else if output != test.expected {
 			t.Errorf("%q expected %q got %q", test.tmpl, test.expected, output)
 		}
 	}
 
-	// Now set AllowMissingVariables=false and test again
-	template.AllowMissingVariables = false
-	defer func() { template.AllowMissingVariables = true }()
+	// Now set "error on missing variable" and test again
 	for _, test := range tests {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, true, test.context)
 		if err != nil {
-			t.Errorf("%s expected %s but got error %s", test.tmpl, test.expected, err.Error())
+			t.Errorf("%q expected %q but got error: %v", test.tmpl, test.expected, err)
 		} else if output != test.expected {
 			t.Errorf("%q expected %q got %q", test.tmpl, test.expected, output)
 		}
@@ -250,9 +250,8 @@ var missing = []Test{
 }
 
 func TestMissing(t *testing.T) {
-	// Default behavior, AllowMissingVariables=true
 	for _, test := range missing {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, false, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -260,11 +259,9 @@ func TestMissing(t *testing.T) {
 		}
 	}
 
-	// Now set AllowMissingVariables=false and confirm we get errors.
-	template.AllowMissingVariables = false
-	defer func() { template.AllowMissingVariables = true }()
+	// Now set "error on missing varaible" and confirm we get errors.
 	for _, test := range missing {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, true, test.context)
 		if err == nil {
 			t.Errorf("%q expected missing variable error but got %q", test.tmpl, output)
 		} else if !strings.Contains(err.Error(), "Missing variable") {
@@ -274,12 +271,12 @@ func TestMissing(t *testing.T) {
 }
 
 func TestMultiContext(t *testing.T) {
-	output, err := render(`{{hello}} {{World}}`, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
+	output, err := render(`{{hello}} {{World}}`, false, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	output2, err := render(`{{hello}} {{World}}`, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
+	output2, err := render(`{{hello}} {{World}}`, false, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
 	if err != nil {
 		t.Error(err)
 		return
@@ -301,7 +298,7 @@ var malformed = []Test{
 
 func TestMalformed(t *testing.T) {
 	for _, test := range malformed {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, false, test.context)
 		if err != nil {
 			if test.err == nil {
 				t.Error(err)
@@ -422,7 +419,7 @@ func TestPointerReceiver(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		output, err := render(test.tmpl, test.context)
+		output, err := render(test.tmpl, false, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {

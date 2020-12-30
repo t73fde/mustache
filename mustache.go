@@ -31,13 +31,6 @@ import (
 	"strings"
 )
 
-var (
-	// AllowMissingVariables defines the behavior for a variable "miss." If it is
-	// true (the default), an empty string is emitted. If it is false, an error
-	// is generated instead.
-	AllowMissingVariables = true
-)
-
 // A TagType represents the specific type of mustache tag that a Tag
 // represents. The zero TagType is not a valid type.
 type TagType uint
@@ -119,6 +112,7 @@ type Template struct {
 	curline int
 	elems   []interface{}
 	partial PartialProvider
+	errmiss bool // Error when variable is not found?
 }
 
 type parseError struct {
@@ -486,16 +480,16 @@ func (tmpl *Template) parse() error {
 // Evaluate interfaces and pointers looking for a value that can look up the
 // name, via a struct field, method, or map key, and return the result of the
 // lookup.
-func lookup(contextChain []interface{}, name string, allowMissing bool) (reflect.Value, error) {
+func lookup(contextChain []interface{}, name string, errMissing bool) (reflect.Value, error) {
 	// dot notation
 	if name != "." && strings.Contains(name, ".") {
 		parts := strings.SplitN(name, ".", 2)
 
-		v, err := lookup(contextChain, parts[0], allowMissing)
+		v, err := lookup(contextChain, parts[0], errMissing)
 		if err != nil {
 			return v, err
 		}
-		return lookup([]interface{}{v}, parts[1], allowMissing)
+		return lookup([]interface{}{v}, parts[1], errMissing)
 	}
 
 	defer func() {
@@ -543,10 +537,10 @@ Outer:
 			}
 		}
 	}
-	if allowMissing {
-		return reflect.Value{}, nil
+	if errMissing {
+		return reflect.Value{}, fmt.Errorf("Missing variable %q", name)
 	}
-	return reflect.Value{}, fmt.Errorf("Missing variable %q", name)
+	return reflect.Value{}, nil
 }
 
 func isEmpty(v reflect.Value) bool {
@@ -583,8 +577,8 @@ loop:
 	return v
 }
 
-func renderSection(section *sectionElement, contextChain []interface{}, buf io.Writer) error {
-	value, err := lookup(contextChain, section.name, true)
+func (tmpl *Template) renderSection(section *sectionElement, contextChain []interface{}, buf io.Writer) error {
+	value, err := lookup(contextChain, section.name, false)
 	if err != nil {
 		return err
 	}
@@ -620,7 +614,7 @@ func renderSection(section *sectionElement, contextChain []interface{}, buf io.W
 	for _, ctx := range contexts {
 		chain2[0] = ctx
 		for _, elem := range section.elems {
-			if err := renderElement(elem, chain2, buf); err != nil {
+			if err := tmpl.renderElement(elem, chain2, buf); err != nil {
 				return err
 			}
 		}
@@ -628,7 +622,7 @@ func renderSection(section *sectionElement, contextChain []interface{}, buf io.W
 	return nil
 }
 
-func renderElement(element interface{}, contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderElement(element interface{}, contextChain []interface{}, buf io.Writer) error {
 	switch elem := element.(type) {
 	case *textElement:
 		_, err := buf.Write(elem.text)
@@ -639,7 +633,7 @@ func renderElement(element interface{}, contextChain []interface{}, buf io.Write
 				fmt.Printf("Panic while looking up %q: %s\n", elem.name, r)
 			}
 		}()
-		val, err := lookup(contextChain, elem.name, AllowMissingVariables)
+		val, err := lookup(contextChain, elem.name, tmpl.errmiss)
 		if err != nil {
 			return err
 		}
@@ -653,7 +647,7 @@ func renderElement(element interface{}, contextChain []interface{}, buf io.Write
 			}
 		}
 	case *sectionElement:
-		if err := renderSection(elem, contextChain, buf); err != nil {
+		if err := tmpl.renderSection(elem, contextChain, buf); err != nil {
 			return err
 		}
 	case *partialElement:
@@ -670,7 +664,7 @@ func renderElement(element interface{}, contextChain []interface{}, buf io.Write
 
 func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) error {
 	for _, elem := range tmpl.elems {
-		if err := renderElement(elem, contextChain, buf); err != nil {
+		if err := tmpl.renderElement(elem, contextChain, buf); err != nil {
 			return err
 		}
 	}
@@ -736,13 +730,16 @@ func ParseStringPartials(data string, partials PartialProvider) (*Template, erro
 	if partials == nil {
 		partials = &EmptyProvider
 	}
-	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, partials}
+	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, partials, false}
 	err := tmpl.parse()
 	if err != nil {
 		return nil, err
 	}
 	return &tmpl, err
 }
+
+// SetErrorOnMissing will produce an error is a variable is not found.
+func (tmpl *Template) SetErrorOnMissing() { tmpl.errmiss = true }
 
 // PartialProvider comprises the behaviors required of a struct to be able to
 // provide partials to the mustache rendering engine.
