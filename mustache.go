@@ -492,12 +492,6 @@ func lookup(contextChain []interface{}, name string, errMissing bool) (reflect.V
 		return lookup([]interface{}{v}, parts[1], errMissing)
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("Panic while looking up %q: %s\n", name, r)
-		}
-	}()
-
 Outer:
 	for _, ctx := range contextChain {
 		v := ctx.(reflect.Value)
@@ -628,16 +622,10 @@ func (tmpl *Template) renderElement(element interface{}, contextChain []interfac
 		_, err := buf.Write(elem.text)
 		return err
 	case *varElement:
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Printf("Panic while looking up %q: %s\n", elem.name, r)
-			}
-		}()
 		val, err := lookup(contextChain, elem.name, tmpl.errmiss)
 		if err != nil {
 			return err
 		}
-
 		if val.IsValid() {
 			if elem.raw {
 				fmt.Fprint(buf, val.Interface())
