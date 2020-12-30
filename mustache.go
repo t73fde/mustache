@@ -23,12 +23,12 @@ package template
 import (
 	"bytes"
 	"fmt"
-	"html/template"
 	"io"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 )
 
 // A TagType represents the specific type of mustache tag that a Tag
@@ -42,12 +42,6 @@ const (
 	Section
 	InvertedSection
 	Partial
-)
-
-// Skip all whitespaces apeared after these types of tags until end of line if
-// the line only contains a tag and whitespaces.
-const (
-	SkipWhitespaceTagTypes = "#^/<>=!"
 )
 
 func (t TagType) String() string {
@@ -140,17 +134,9 @@ func extractTags(elems []interface{}) []Tag {
 	return tags
 }
 
-func (e *varElement) Type() TagType {
-	return Variable
-}
-
-func (e *varElement) Name() string {
-	return e.name
-}
-
-func (e *varElement) Tags() []Tag {
-	panic("mustache: Tags on Variable type")
-}
+func (e *varElement) Type() TagType { return Variable }
+func (e *varElement) Name() string  { return e.name }
+func (e *varElement) Tags() []Tag   { panic("mustache: Tags on Variable type") }
 
 func (e *sectionElement) Type() TagType {
 	if e.inverted {
@@ -158,26 +144,12 @@ func (e *sectionElement) Type() TagType {
 	}
 	return Section
 }
+func (e *sectionElement) Name() string { return e.name }
+func (e *sectionElement) Tags() []Tag  { return extractTags(e.elems) }
 
-func (e *sectionElement) Name() string {
-	return e.name
-}
-
-func (e *sectionElement) Tags() []Tag {
-	return extractTags(e.elems)
-}
-
-func (e *partialElement) Type() TagType {
-	return Partial
-}
-
-func (e *partialElement) Name() string {
-	return e.name
-}
-
-func (e *partialElement) Tags() []Tag {
-	return nil
-}
+func (e *partialElement) Type() TagType { return Partial }
+func (e *partialElement) Name() string  { return e.name }
+func (e *partialElement) Tags() []Tag   { return nil }
 
 func (p parseError) Error() string {
 	return fmt.Sprintf("line %d: %s", p.line, p.message)
@@ -206,7 +178,6 @@ func (tmpl *Template) readString(s string) (string, error) {
 				break
 			}
 		}
-
 		if match {
 			e := i + len(s)
 			text := tmpl.data[tmpl.p:e]
@@ -234,17 +205,14 @@ func (tmpl *Template) readText() (*textReadingResult, error) {
 			mayStandalone: false,
 		}, err
 	}
-
-	var i int
-	for i = tmpl.p - len(tmpl.otag); i > pPrev; i-- {
+	i := tmpl.p - len(tmpl.otag)
+	for ; i > pPrev; i-- {
 		if tmpl.data[i-1] != ' ' && tmpl.data[i-1] != '\t' {
 			break
 		}
 	}
 
-	mayStandalone := (i == 0 || tmpl.data[i-1] == '\n')
-
-	if mayStandalone {
+	if i == 0 || tmpl.data[i-1] == '\n' {
 		return &textReadingResult{
 			text:          tmpl.data[pPrev:i],
 			padding:       tmpl.data[i : tmpl.p-len(tmpl.otag)],
@@ -294,9 +262,13 @@ func (tmpl *Template) readTag(mayStandalone bool) (*tagReadingResult, error) {
 		}
 	}
 
+	// Skip all whitespaces apeared after these types of tags until end of line if
+	// the line only contains a tag and whitespaces.
+	const skipWhitespaceTagTypes = "#^/<>=!"
+
 	standalone := true
 	if mayStandalone {
-		if !strings.Contains(SkipWhitespaceTagTypes, tag[0:1]) {
+		if !strings.Contains(skipWhitespaceTagTypes, tag[0:1]) {
 			standalone = false
 		} else {
 			if eow == len(tmpl.data) {
@@ -480,21 +452,19 @@ func (tmpl *Template) parse() error {
 // Evaluate interfaces and pointers looking for a value that can look up the
 // name, via a struct field, method, or map key, and return the result of the
 // lookup.
-func lookup(contextChain []interface{}, name string, errMissing bool) (reflect.Value, error) {
+func lookup(contextChain []reflect.Value, name string, errMissing bool) (reflect.Value, error) {
 	// dot notation
 	if name != "." && strings.Contains(name, ".") {
 		parts := strings.SplitN(name, ".", 2)
-
 		v, err := lookup(contextChain, parts[0], errMissing)
 		if err != nil {
 			return v, err
 		}
-		return lookup([]interface{}{v}, parts[1], errMissing)
+		return lookup([]reflect.Value{v}, parts[1], errMissing)
 	}
 
 Outer:
-	for _, ctx := range contextChain {
-		v := ctx.(reflect.Value)
+	for _, v := range contextChain {
 		for v.IsValid() {
 			typ := v.Type()
 			if n := v.Type().NumMethod(); n > 0 {
@@ -571,13 +541,13 @@ loop:
 	return v
 }
 
-func (tmpl *Template) renderSection(section *sectionElement, contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderSection(w io.Writer, section *sectionElement, contextChain []reflect.Value) error {
 	value, err := lookup(contextChain, section.name, false)
 	if err != nil {
 		return err
 	}
-	var context = contextChain[len(contextChain)-1].(reflect.Value)
-	var contexts = []interface{}{}
+	var context = contextChain[len(contextChain)-1]
+	var contexts = []reflect.Value{}
 	// if the value is nil, check if it's an inverted section
 	isEmpty := isEmpty(value)
 	if isEmpty && !section.inverted || !isEmpty && section.inverted {
@@ -602,13 +572,13 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 		contexts = append(contexts, context)
 	}
 
-	chain2 := make([]interface{}, len(contextChain)+1)
+	chain2 := make([]reflect.Value, len(contextChain)+1)
 	copy(chain2[1:], contextChain)
 	//by default we execute the section
 	for _, ctx := range contexts {
 		chain2[0] = ctx
 		for _, elem := range section.elems {
-			if err := tmpl.renderElement(elem, chain2, buf); err != nil {
+			if err := tmpl.renderElement(w, elem, chain2); err != nil {
 				return err
 			}
 		}
@@ -616,10 +586,10 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 	return nil
 }
 
-func (tmpl *Template) renderElement(element interface{}, contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderElement(w io.Writer, element interface{}, contextChain []reflect.Value) error {
 	switch elem := element.(type) {
 	case *textElement:
-		_, err := buf.Write(elem.text)
+		_, err := w.Write(elem.text)
 		return err
 	case *varElement:
 		val, err := lookup(contextChain, elem.name, tmpl.errmiss)
@@ -628,14 +598,14 @@ func (tmpl *Template) renderElement(element interface{}, contextChain []interfac
 		}
 		if val.IsValid() {
 			if elem.raw {
-				fmt.Fprint(buf, val.Interface())
+				fmt.Fprint(w, val.Interface())
 			} else {
 				s := fmt.Sprint(val.Interface())
-				template.HTMLEscape(buf, []byte(s))
+				template.HTMLEscape(w, []byte(s))
 			}
 		}
 	case *sectionElement:
-		if err := tmpl.renderSection(elem, contextChain, buf); err != nil {
+		if err := tmpl.renderSection(w, elem, contextChain); err != nil {
 			return err
 		}
 	case *partialElement:
@@ -643,16 +613,16 @@ func (tmpl *Template) renderElement(element interface{}, contextChain []interfac
 		if err != nil {
 			return err
 		}
-		if err := partial.renderTemplate(contextChain, buf); err != nil {
+		if err := partial.renderTemplate(w, contextChain); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderTemplate(w io.Writer, contextChain []reflect.Value) error {
 	for _, elem := range tmpl.elems {
-		if err := tmpl.renderElement(elem, contextChain, buf); err != nil {
+		if err := tmpl.renderElement(w, elem, contextChain); err != nil {
 			return err
 		}
 	}
@@ -661,13 +631,13 @@ func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) 
 
 // FRender uses the given data source - generally a map or struct - to render
 // the compiled template to an io.Writer.
-func (tmpl *Template) FRender(out io.Writer, context ...interface{}) error {
-	var contextChain []interface{}
+func (tmpl *Template) FRender(w io.Writer, context ...interface{}) error {
+	contextChain := make([]reflect.Value, 0, len(context))
 	for _, c := range context {
 		val := reflect.ValueOf(c)
 		contextChain = append(contextChain, val)
 	}
-	return tmpl.renderTemplate(contextChain, out)
+	return tmpl.renderTemplate(w, contextChain)
 }
 
 // Render uses the given data source - generally a map or struct - to render
@@ -692,7 +662,7 @@ func (tmpl *Template) RenderInLayout(layout *Template, context ...interface{}) (
 
 // FRenderInLayout uses the given data source - generally a map or struct - to
 // render the compiled templated a loayout "wrapper" template to an io.Writer.
-func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context ...interface{}) error {
+func (tmpl *Template) FRenderInLayout(w io.Writer, layout *Template, context ...interface{}) error {
 	content, err := tmpl.Render(context...)
 	if err != nil {
 		return err
@@ -700,7 +670,7 @@ func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context .
 	allContext := make([]interface{}, len(context)+1)
 	copy(allContext[1:], context)
 	allContext[0] = map[string]string{"content": content}
-	return layout.FRender(out, allContext...)
+	return layout.FRender(w, allContext...)
 }
 
 // ParseString compiles a mustache template string. The resulting output can
