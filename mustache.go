@@ -128,6 +128,10 @@ type parseError struct {
 	message string
 }
 
+func (p parseError) Error() string {
+	return fmt.Sprintf("line %d: %s", p.line, p.message)
+}
+
 // Tags returns the mustache tags for the given template
 func (tmpl *Template) Tags() []Tag {
 	return extractTags(tmpl.nodes)
@@ -146,10 +150,6 @@ func extractTags(nodes []node) []Tag {
 		}
 	}
 	return tags
-}
-
-func (p parseError) Error() string {
-	return fmt.Sprintf("line %d: %s", p.line, p.message)
 }
 
 func (tmpl *Template) readString(s string) (string, error) {
