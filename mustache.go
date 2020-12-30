@@ -112,14 +112,13 @@ type partialElement struct {
 
 // Template represents a compiled mustache template
 type Template struct {
-	data     string
-	otag     string
-	ctag     string
-	p        int
-	curline  int
-	elems    []interface{}
-	forceRaw bool
-	partial  PartialProvider
+	data    string
+	otag    string
+	ctag    string
+	p       int
+	curline int
+	elems   []interface{}
+	partial PartialProvider
 }
 
 type parseError struct {
@@ -407,7 +406,7 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 			name := strings.TrimSpace(tag[1:])
 			section.elems = append(section.elems, &varElement{name, true})
 		default:
-			section.elems = append(section.elems, &varElement{tag, tmpl.forceRaw})
+			section.elems = append(section.elems, &varElement{tag, false})
 		}
 	}
 }
@@ -479,7 +478,7 @@ func (tmpl *Template) parse() error {
 			name := strings.TrimSpace(tag[1:])
 			tmpl.elems = append(tmpl.elems, &varElement{name, true})
 		default:
-			tmpl.elems = append(tmpl.elems, &varElement{tag, tmpl.forceRaw})
+			tmpl.elems = append(tmpl.elems, &varElement{tag, false})
 		}
 	}
 }
@@ -722,18 +721,11 @@ func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context .
 	return layout.FRender(out, allContext...)
 }
 
-// ParseString compiles a mustache template string. The resulting output can be
-// used to efficiently render the template multiple times with different data
-// sources.
-func ParseString(data string) (*Template, error) {
-	return ParseStringRaw(data, false)
-}
-
-// ParseStringRaw compiles a mustache template string. The resulting output can
+// ParseString compiles a mustache template string. The resulting output can
 // be used to efficiently render the template multiple times with different
 // data sources.
-func ParseStringRaw(data string, forceRaw bool) (*Template, error) {
-	return ParseStringPartialsRaw(data, &EmptyProvider, forceRaw)
+func ParseString(data string) (*Template, error) {
+	return ParseStringPartials(data, nil)
 }
 
 // ParseStringPartials compiles a mustache template string, retrieving any
@@ -741,15 +733,10 @@ func ParseStringRaw(data string, forceRaw bool) (*Template, error) {
 // to efficiently render the template multiple times with different data
 // sources.
 func ParseStringPartials(data string, partials PartialProvider) (*Template, error) {
-	return ParseStringPartialsRaw(data, partials, false)
-}
-
-// ParseStringPartialsRaw compiles a mustache template string, retrieving any
-// required partials from the given provider. The resulting output can be used
-// to efficiently render the template multiple times with different data
-// sources.
-func ParseStringPartialsRaw(data string, partials PartialProvider, forceRaw bool) (*Template, error) {
-	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, forceRaw, partials}
+	if partials == nil {
+		partials = &EmptyProvider
+	}
+	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, partials}
 	err := tmpl.parse()
 	if err != nil {
 		return nil, err
