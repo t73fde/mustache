@@ -26,10 +26,33 @@ import (
 	"io"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 )
+
+// Node represents a node in the parse tree.
+// It is either a Tag or a textNode.
+type node interface {
+	node()
+}
+
+// Tag represents the different mustache tag types.
+//
+// Not all methods apply to all kinds of tags. Restrictions, if any, are noted
+// in the documentation for each method. Use the Type method to find out the
+// type of tag before calling type-specific methods. Calling a method
+// inappropriate to the type of tag causes a run time panic.
+type Tag interface {
+	node
+
+	// Type returns the type of the tag.
+	Type() TagType
+	// Name returns the name of the tag.
+	Name() string
+	// Tags returns any child tags. It panics for tag types which cannot contain
+	// child tags (i.e. variable tags).
+	Tags() []Tag
+}
 
 // A TagType represents the specific type of mustache tag that a Tag
 // represents. The zero TagType is not a valid type.
@@ -44,58 +67,49 @@ const (
 	Partial
 )
 
-func (t TagType) String() string {
-	if int(t) < len(tagNames) {
-		return tagNames[t]
-	}
-	return "type" + strconv.Itoa(int(t))
-}
-
-var tagNames = []string{
-	Invalid:         "Invalid",
-	Variable:        "Variable",
-	Section:         "Section",
-	InvertedSection: "InvertedSection",
-	Partial:         "Partial",
-}
-
-// Tag represents the different mustache tag types.
-//
-// Not all methods apply to all kinds of tags. Restrictions, if any, are noted
-// in the documentation for each method. Use the Type method to find out the
-// type of tag before calling type-specific methods. Calling a method
-// inappropriate to the type of tag causes a run time panic.
-type Tag interface {
-	// Type returns the type of the tag.
-	Type() TagType
-	// Name returns the name of the tag.
-	Name() string
-	// Tags returns any child tags. It panics for tag types which cannot contain
-	// child tags (i.e. variable tags).
-	Tags() []Tag
-}
-
-type textElement struct {
-	text []byte
-}
-
-type varElement struct {
+type varNode struct {
 	name string
 	raw  bool
 }
 
-type sectionElement struct {
+func (e *varNode) node()         {}
+func (e *varNode) Type() TagType { return Variable }
+func (e *varNode) Name() string  { return e.name }
+func (e *varNode) Tags() []Tag   { panic("mustache: Tags on Variable type") }
+
+type sectionNode struct {
 	name      string
 	inverted  bool
 	startline int
-	elems     []interface{}
+	nodes     []node
 }
 
-type partialElement struct {
+func (e *sectionNode) node() {}
+func (e *sectionNode) Type() TagType {
+	if e.inverted {
+		return InvertedSection
+	}
+	return Section
+}
+func (e *sectionNode) Name() string { return e.name }
+func (e *sectionNode) Tags() []Tag  { return extractTags(e.nodes) }
+
+type partialNode struct {
 	name   string
 	indent string
 	prov   PartialProvider
 }
+
+func (e *partialNode) node()         {}
+func (e *partialNode) Type() TagType { return Partial }
+func (e *partialNode) Name() string  { return e.name }
+func (e *partialNode) Tags() []Tag   { return nil }
+
+type textNode struct {
+	text []byte
+}
+
+func (e *textNode) node() {}
 
 // Template represents a compiled mustache template
 type Template struct {
@@ -104,7 +118,7 @@ type Template struct {
 	ctag    string
 	p       int
 	curline int
-	elems   []interface{}
+	nodes   []node
 	partial PartialProvider
 	errmiss bool // Error when variable is not found?
 }
@@ -116,40 +130,23 @@ type parseError struct {
 
 // Tags returns the mustache tags for the given template
 func (tmpl *Template) Tags() []Tag {
-	return extractTags(tmpl.elems)
+	return extractTags(tmpl.nodes)
 }
 
-func extractTags(elems []interface{}) []Tag {
-	tags := make([]Tag, 0, len(elems))
-	for _, elem := range elems {
+func extractTags(nodes []node) []Tag {
+	tags := make([]Tag, 0, len(nodes))
+	for _, elem := range nodes {
 		switch elem := elem.(type) {
-		case *varElement:
+		case *varNode:
 			tags = append(tags, elem)
-		case *sectionElement:
+		case *sectionNode:
 			tags = append(tags, elem)
-		case *partialElement:
+		case *partialNode:
 			tags = append(tags, elem)
 		}
 	}
 	return tags
 }
-
-func (e *varElement) Type() TagType { return Variable }
-func (e *varElement) Name() string  { return e.name }
-func (e *varElement) Tags() []Tag   { panic("mustache: Tags on Variable type") }
-
-func (e *sectionElement) Type() TagType {
-	if e.inverted {
-		return InvertedSection
-	}
-	return Section
-}
-func (e *sectionElement) Name() string { return e.name }
-func (e *sectionElement) Tags() []Tag  { return extractTags(e.elems) }
-
-func (e *partialElement) Type() TagType { return Partial }
-func (e *partialElement) Name() string  { return e.name }
-func (e *partialElement) Tags() []Tag   { return nil }
 
 func (p parseError) Error() string {
 	return fmt.Sprintf("line %d: %s", p.line, p.message)
@@ -294,15 +291,15 @@ func (tmpl *Template) readTag(mayStandalone bool) (*tagReadingResult, error) {
 	}, nil
 }
 
-func (tmpl *Template) parsePartial(name, indent string) (*partialElement, error) {
-	return &partialElement{
+func (tmpl *Template) parsePartial(name, indent string) (*partialNode, error) {
+	return &partialNode{
 		name:   name,
 		indent: indent,
 		prov:   tmpl.partial,
 	}, nil
 }
 
-func (tmpl *Template) parseSection(section *sectionElement) error {
+func (tmpl *Template) parseSection(section *sectionNode) error {
 	for {
 		textResult, err := tmpl.readText()
 		text := textResult.text
@@ -315,7 +312,7 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 		}
 
 		// put text into an item
-		section.elems = append(section.elems, &textElement{[]byte(text)})
+		section.nodes = append(section.nodes, &textNode{[]byte(text)})
 
 		tagResult, err := tmpl.readTag(mayStandalone)
 		if err != nil {
@@ -323,7 +320,7 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 		}
 
 		if !tagResult.standalone {
-			section.elems = append(section.elems, &textElement{[]byte(padding)})
+			section.nodes = append(section.nodes, &textNode{[]byte(padding)})
 		}
 
 		tag := tagResult.tag
@@ -333,12 +330,12 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 			break
 		case '#', '^':
 			name := strings.TrimSpace(tag[1:])
-			se := sectionElement{name, tag[0] == '^', tmpl.curline, []interface{}{}}
-			err := tmpl.parseSection(&se)
+			sn := &sectionNode{name, tag[0] == '^', tmpl.curline, []node{}}
+			err := tmpl.parseSection(sn)
 			if err != nil {
 				return err
 			}
-			section.elems = append(section.elems, &se)
+			section.nodes = append(section.nodes, sn)
 		case '/':
 			name := strings.TrimSpace(tag[1:])
 			if name != section.name {
@@ -351,7 +348,7 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 			if err != nil {
 				return err
 			}
-			section.elems = append(section.elems, partial)
+			section.nodes = append(section.nodes, partial)
 		case '=':
 			if tag[len(tag)-1] != '=' {
 				return parseError{tmpl.curline, "Invalid meta tag"}
@@ -366,13 +363,13 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 			if tag[len(tag)-1] == '}' {
 				//use a raw tag
 				name := strings.TrimSpace(tag[1 : len(tag)-1])
-				section.elems = append(section.elems, &varElement{name, true})
+				section.nodes = append(section.nodes, &varNode{name, true})
 			}
 		case '&':
 			name := strings.TrimSpace(tag[1:])
-			section.elems = append(section.elems, &varElement{name, true})
+			section.nodes = append(section.nodes, &varNode{name, true})
 		default:
-			section.elems = append(section.elems, &varElement{tag, false})
+			section.nodes = append(section.nodes, &varNode{tag, false})
 		}
 	}
 }
@@ -386,12 +383,12 @@ func (tmpl *Template) parse() error {
 
 		if err == io.EOF {
 			//put the remaining text in a block
-			tmpl.elems = append(tmpl.elems, &textElement{[]byte(text)})
+			tmpl.nodes = append(tmpl.nodes, &textNode{[]byte(text)})
 			return nil
 		}
 
 		// put text into an item
-		tmpl.elems = append(tmpl.elems, &textElement{[]byte(text)})
+		tmpl.nodes = append(tmpl.nodes, &textNode{[]byte(text)})
 
 		tagResult, err := tmpl.readTag(mayStandalone)
 		if err != nil {
@@ -399,7 +396,7 @@ func (tmpl *Template) parse() error {
 		}
 
 		if !tagResult.standalone {
-			tmpl.elems = append(tmpl.elems, &textElement{[]byte(padding)})
+			tmpl.nodes = append(tmpl.nodes, &textNode{[]byte(padding)})
 		}
 
 		tag := tagResult.tag
@@ -409,12 +406,12 @@ func (tmpl *Template) parse() error {
 			break
 		case '#', '^':
 			name := strings.TrimSpace(tag[1:])
-			se := sectionElement{name, tag[0] == '^', tmpl.curline, []interface{}{}}
-			err := tmpl.parseSection(&se)
+			sn := &sectionNode{name, tag[0] == '^', tmpl.curline, []node{}}
+			err := tmpl.parseSection(sn)
 			if err != nil {
 				return err
 			}
-			tmpl.elems = append(tmpl.elems, &se)
+			tmpl.nodes = append(tmpl.nodes, sn)
 		case '/':
 			return parseError{tmpl.curline, "unmatched close tag"}
 		case '>':
@@ -423,7 +420,7 @@ func (tmpl *Template) parse() error {
 			if err != nil {
 				return err
 			}
-			tmpl.elems = append(tmpl.elems, partial)
+			tmpl.nodes = append(tmpl.nodes, partial)
 		case '=':
 			if tag[len(tag)-1] != '=' {
 				return parseError{tmpl.curline, "Invalid meta tag"}
@@ -438,13 +435,13 @@ func (tmpl *Template) parse() error {
 			//use a raw tag
 			if tag[len(tag)-1] == '}' {
 				name := strings.TrimSpace(tag[1 : len(tag)-1])
-				tmpl.elems = append(tmpl.elems, &varElement{name, true})
+				tmpl.nodes = append(tmpl.nodes, &varNode{name, true})
 			}
 		case '&':
 			name := strings.TrimSpace(tag[1:])
-			tmpl.elems = append(tmpl.elems, &varElement{name, true})
+			tmpl.nodes = append(tmpl.nodes, &varNode{name, true})
 		default:
-			tmpl.elems = append(tmpl.elems, &varElement{tag, false})
+			tmpl.nodes = append(tmpl.nodes, &varNode{tag, false})
 		}
 	}
 }
@@ -541,7 +538,7 @@ loop:
 	return v
 }
 
-func (tmpl *Template) renderSection(w io.Writer, section *sectionElement, contextChain []reflect.Value) error {
+func (tmpl *Template) renderSection(w io.Writer, section *sectionNode, contextChain []reflect.Value) error {
 	value, err := lookup(contextChain, section.name, false)
 	if err != nil {
 		return err
@@ -577,8 +574,8 @@ func (tmpl *Template) renderSection(w io.Writer, section *sectionElement, contex
 	//by default we execute the section
 	for _, ctx := range contexts {
 		chain2[0] = ctx
-		for _, elem := range section.elems {
-			if err := tmpl.renderElement(w, elem, chain2); err != nil {
+		for _, n := range section.nodes {
+			if err := tmpl.renderNode(w, n, chain2); err != nil {
 				return err
 			}
 		}
@@ -586,30 +583,30 @@ func (tmpl *Template) renderSection(w io.Writer, section *sectionElement, contex
 	return nil
 }
 
-func (tmpl *Template) renderElement(w io.Writer, element interface{}, contextChain []reflect.Value) error {
-	switch elem := element.(type) {
-	case *textElement:
-		_, err := w.Write(elem.text)
+func (tmpl *Template) renderNode(w io.Writer, node node, contextChain []reflect.Value) error {
+	switch n := node.(type) {
+	case *textNode:
+		_, err := w.Write(n.text)
 		return err
-	case *varElement:
-		val, err := lookup(contextChain, elem.name, tmpl.errmiss)
+	case *varNode:
+		val, err := lookup(contextChain, n.name, tmpl.errmiss)
 		if err != nil {
 			return err
 		}
 		if val.IsValid() {
-			if elem.raw {
+			if n.raw {
 				fmt.Fprint(w, val.Interface())
 			} else {
 				s := fmt.Sprint(val.Interface())
 				template.HTMLEscape(w, []byte(s))
 			}
 		}
-	case *sectionElement:
-		if err := tmpl.renderSection(w, elem, contextChain); err != nil {
+	case *sectionNode:
+		if err := tmpl.renderSection(w, n, contextChain); err != nil {
 			return err
 		}
-	case *partialElement:
-		partial, err := getPartials(elem.prov, elem.name, elem.indent)
+	case *partialNode:
+		partial, err := getPartials(n.prov, n.name, n.indent)
 		if err != nil {
 			return err
 		}
@@ -621,8 +618,8 @@ func (tmpl *Template) renderElement(w io.Writer, element interface{}, contextCha
 }
 
 func (tmpl *Template) renderTemplate(w io.Writer, contextChain []reflect.Value) error {
-	for _, elem := range tmpl.elems {
-		if err := tmpl.renderElement(w, elem, contextChain); err != nil {
+	for _, n := range tmpl.nodes {
+		if err := tmpl.renderNode(w, n, contextChain); err != nil {
 			return err
 		}
 	}
@@ -688,7 +685,7 @@ func ParseStringPartials(data string, partials PartialProvider) (*Template, erro
 	if partials == nil {
 		partials = &EmptyProvider
 	}
-	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, partials, false}
+	tmpl := Template{data, "{{", "}}", 0, 1, []node{}, partials, false}
 	err := tmpl.parse()
 	if err != nil {
 		return nil, err

@@ -23,6 +23,7 @@ package template_test
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -502,7 +503,7 @@ func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
 	}
 	for i, tag := range actual {
 		if tag.Type() != expected[i].Type {
-			t.Errorf("expected %s, got %s", expected[i].Type, tag.Type())
+			t.Errorf("expected %s, got %s", tagString(expected[i].Type), tagString(tag.Type()))
 			return
 		}
 		if tag.Name() != expected[i].Name {
@@ -521,11 +522,26 @@ func compareTags(t *testing.T, actual []template.Tag, expected []tag) {
 		case template.Partial:
 			compareTags(t, tag.Tags(), expected[i].Tags)
 		case template.Invalid:
-			t.Errorf("invalid tag type: %s", tag.Type())
+			t.Errorf("invalid tag type: %s", tagString(tag.Type()))
 			return
 		default:
-			t.Errorf("invalid tag type: %s", tag.Type())
+			t.Errorf("invalid tag type: %s", tagString(tag.Type()))
 			return
 		}
 	}
+}
+
+func tagString(t template.TagType) string {
+	if int(t) < len(tagNames) {
+		return tagNames[t]
+	}
+	return "type" + strconv.Itoa(int(t))
+}
+
+var tagNames = []string{
+	template.Invalid:         "Invalid",
+	template.Variable:        "Variable",
+	template.Section:         "Section",
+	template.InvertedSection: "InvertedSection",
+	template.Partial:         "Partial",
 }
