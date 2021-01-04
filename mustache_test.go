@@ -210,7 +210,7 @@ var tests = []Test{
 
 func render(tmpl *template.Template, context ...interface{}) (string, error) {
 	var buf bytes.Buffer
-	err := tmpl.FRender(&buf, context...)
+	err := tmpl.Render(&buf, context...)
 	return buf.String(), err
 }
 
@@ -236,7 +236,7 @@ func fRenderInLayout(tmpl *template.Template, w io.Writer, layout *template.Temp
 	allContext := make([]interface{}, len(context)+1)
 	copy(allContext[1:], context)
 	allContext[0] = map[string]string{"content": content}
-	return layout.FRender(w, allContext...)
+	return layout.Render(w, allContext...)
 }
 func renderString(data string, errMissing bool, context ...interface{}) (string, error) {
 	tmpl, err := template.ParseString(data)

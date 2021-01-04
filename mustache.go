@@ -625,9 +625,9 @@ func (tmpl *Template) renderTemplate(w io.Writer, contextChain []reflect.Value) 
 	return nil
 }
 
-// FRender uses the given data source - generally a map or struct - to render
+// Render uses the given data source - generally a map or struct - to render
 // the compiled template to an io.Writer.
-func (tmpl *Template) FRender(w io.Writer, context ...interface{}) error {
+func (tmpl *Template) Render(w io.Writer, context ...interface{}) error {
 	contextChain := make([]reflect.Value, 0, len(context))
 	for _, c := range context {
 		val := reflect.ValueOf(c)
