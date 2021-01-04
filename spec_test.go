@@ -245,7 +245,7 @@ func runTest(t *testing.T, file string, test *specTest) {
 		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())
 		return
 	}
-	out, err := tmpl.Render(test.Data)
+	out, err := render(tmpl, test.Data)
 	if err != nil {
 		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())
 		return

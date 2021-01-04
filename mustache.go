@@ -21,7 +21,6 @@
 package template
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"reflect"
@@ -635,39 +634,6 @@ func (tmpl *Template) FRender(w io.Writer, context ...interface{}) error {
 		contextChain = append(contextChain, val)
 	}
 	return tmpl.renderTemplate(w, contextChain)
-}
-
-// Render uses the given data source - generally a map or struct - to render
-// the compiled template and return the output.
-func (tmpl *Template) Render(context ...interface{}) (string, error) {
-	var buf bytes.Buffer
-	err := tmpl.FRender(&buf, context...)
-	return buf.String(), err
-}
-
-// RenderInLayout uses the given data source - generally a map or struct - to
-// render the compiled template and layout "wrapper" template and return the
-// output.
-func (tmpl *Template) RenderInLayout(layout *Template, context ...interface{}) (string, error) {
-	var buf bytes.Buffer
-	err := tmpl.FRenderInLayout(&buf, layout, context...)
-	if err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-// FRenderInLayout uses the given data source - generally a map or struct - to
-// render the compiled templated a loayout "wrapper" template to an io.Writer.
-func (tmpl *Template) FRenderInLayout(w io.Writer, layout *Template, context ...interface{}) error {
-	content, err := tmpl.Render(context...)
-	if err != nil {
-		return err
-	}
-	allContext := make([]interface{}, len(context)+1)
-	copy(allContext[1:], context)
-	allContext[0] = map[string]string{"content": content}
-	return layout.FRender(w, allContext...)
 }
 
 // ParseString compiles a mustache template string. The resulting output can

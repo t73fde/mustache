@@ -23,6 +23,7 @@ package template_test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"testing"
@@ -207,7 +208,37 @@ var tests = []Test{
 	{`"{{#a}}{{b.c.d.e.name}}{{/a}}" == "Phil"`, map[string]interface{}{"a": map[string]interface{}{"b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Phil"}}}}}, "b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Wrong"}}}}}, `"Phil" == "Phil"`, nil},
 }
 
-func render(data string, errMissing bool, context ...interface{}) (string, error) {
+func render(tmpl *template.Template, context ...interface{}) (string, error) {
+	var buf bytes.Buffer
+	err := tmpl.FRender(&buf, context...)
+	return buf.String(), err
+}
+
+// RenderInLayout uses the given data source - generally a map or struct - to
+// render the compiled template and layout "wrapper" template and return the
+// output.
+func renderInLayout(tmpl *template.Template, layout *template.Template, context ...interface{}) (string, error) {
+	var buf bytes.Buffer
+	err := fRenderInLayout(tmpl, &buf, layout, context...)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// FRenderInLayout uses the given data source - generally a map or struct - to
+// render the compiled templated a loayout "wrapper" template to an io.Writer.
+func fRenderInLayout(tmpl *template.Template, w io.Writer, layout *template.Template, context ...interface{}) error {
+	content, err := render(tmpl, context...)
+	if err != nil {
+		return err
+	}
+	allContext := make([]interface{}, len(context)+1)
+	copy(allContext[1:], context)
+	allContext[0] = map[string]string{"content": content}
+	return layout.FRender(w, allContext...)
+}
+func renderString(data string, errMissing bool, context ...interface{}) (string, error) {
 	tmpl, err := template.ParseString(data)
 	if err != nil {
 		return "", err
@@ -215,12 +246,12 @@ func render(data string, errMissing bool, context ...interface{}) (string, error
 	if errMissing {
 		tmpl.SetErrorOnMissing()
 	}
-	return tmpl.Render(context...)
+	return render(tmpl, context...)
 }
 
 func TestBasic(t *testing.T) {
 	for _, test := range tests {
-		output, err := render(test.tmpl, false, test.context)
+		output, err := renderString(test.tmpl, false, test.context)
 		if err != nil {
 			t.Errorf("%q expected %q but got error: %v", test.tmpl, test.expected, err)
 		} else if output != test.expected {
@@ -230,7 +261,7 @@ func TestBasic(t *testing.T) {
 
 	// Now set "error on missing variable" and test again
 	for _, test := range tests {
-		output, err := render(test.tmpl, true, test.context)
+		output, err := renderString(test.tmpl, true, test.context)
 		if err != nil {
 			t.Errorf("%q expected %q but got error: %v", test.tmpl, test.expected, err)
 		} else if output != test.expected {
@@ -252,7 +283,7 @@ var missing = []Test{
 
 func TestMissing(t *testing.T) {
 	for _, test := range missing {
-		output, err := render(test.tmpl, false, test.context)
+		output, err := renderString(test.tmpl, false, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
@@ -262,7 +293,7 @@ func TestMissing(t *testing.T) {
 
 	// Now set "error on missing varaible" and confirm we get errors.
 	for _, test := range missing {
-		output, err := render(test.tmpl, true, test.context)
+		output, err := renderString(test.tmpl, true, test.context)
 		if err == nil {
 			t.Errorf("%q expected missing variable error but got %q", test.tmpl, output)
 		} else if !strings.Contains(err.Error(), "Missing variable") {
@@ -272,12 +303,12 @@ func TestMissing(t *testing.T) {
 }
 
 func TestMultiContext(t *testing.T) {
-	output, err := render(`{{hello}} {{World}}`, false, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
+	output, err := renderString(`{{hello}} {{World}}`, false, map[string]string{"hello": "hello"}, struct{ World string }{"world"})
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	output2, err := render(`{{hello}} {{World}}`, false, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
+	output2, err := renderString(`{{hello}} {{World}}`, false, struct{ World string }{"world"}, map[string]string{"hello": "hello"})
 	if err != nil {
 		t.Error(err)
 		return
@@ -299,7 +330,7 @@ var malformed = []Test{
 
 func TestMalformed(t *testing.T) {
 	for _, test := range malformed {
-		output, err := render(test.tmpl, false, test.context)
+		output, err := renderString(test.tmpl, false, test.context)
 		if err != nil {
 			if test.err == nil {
 				t.Error(err)
@@ -331,7 +362,7 @@ var layoutTests = []LayoutTest{
 	{`Header {{content}} {{content}} Footer`, `Hello {{content}}`, map[string]string{"content": "World"}, `Header Hello World Hello World Footer`},
 }
 
-func renderInLayout(data, layout string, context interface{}) (string, error) {
+func renderInLayoutString(data, layout string, context interface{}) (string, error) {
 	tmplLay, err := template.ParseString(layout)
 	if err != nil {
 		return "", err
@@ -340,12 +371,12 @@ func renderInLayout(data, layout string, context interface{}) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return tmplDat.RenderInLayout(tmplLay, context)
+	return renderInLayout(tmplDat, tmplLay, context)
 }
 
 func TestLayout(t *testing.T) {
 	for _, test := range layoutTests {
-		output, err := renderInLayout(test.tmpl, test.layout, test.context)
+		output, err := renderInLayoutString(test.tmpl, test.layout, test.context)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -369,7 +400,7 @@ func TestLayoutToWriter(t *testing.T) {
 			continue
 		}
 		var buf bytes.Buffer
-		err = tmpl.FRenderInLayout(&buf, layoutTmpl, test.context)
+		err = fRenderInLayout(tmpl, &buf, layoutTmpl, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if buf.String() != test.expected {
@@ -420,7 +451,7 @@ func TestPointerReceiver(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		output, err := render(test.tmpl, false, test.context)
+		output, err := renderString(test.tmpl, false, test.context)
 		if err != nil {
 			t.Error(err)
 		} else if output != test.expected {
