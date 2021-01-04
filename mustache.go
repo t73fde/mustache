@@ -636,18 +636,11 @@ func (tmpl *Template) Render(w io.Writer, context ...interface{}) error {
 	return tmpl.renderTemplate(w, contextChain)
 }
 
-// ParseString compiles a mustache template string. The resulting output can
-// be used to efficiently render the template multiple times with different
-// data sources.
-func ParseString(data string) (*Template, error) {
-	return ParseStringPartials(data, nil)
-}
-
-// ParseStringPartials compiles a mustache template string, retrieving any
+// ParseString compiles a mustache template string, retrieving any
 // required partials from the given provider. The resulting output can be used
 // to efficiently render the template multiple times with different data
 // sources.
-func ParseStringPartials(data string, partials PartialProvider) (*Template, error) {
+func ParseString(data string, partials PartialProvider) (*Template, error) {
 	if partials == nil {
 		partials = &EmptyProvider
 	}
@@ -717,5 +710,5 @@ func getPartials(partials PartialProvider, name, indent string) (*Template, erro
 
 	// indent non empty lines
 	data = nonEmptyLine.ReplaceAllString(data, indent+"$1")
-	return ParseStringPartials(data, partials)
+	return ParseString(data, partials)
 }

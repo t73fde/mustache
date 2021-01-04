@@ -240,7 +240,7 @@ func runTest(t *testing.T, file string, test *specTest) {
 		return
 	}
 
-	tmpl, err := template.ParseStringPartials(test.Template, selectProvider(test.Partials))
+	tmpl, err := template.ParseString(test.Template, selectProvider(test.Partials))
 	if err != nil {
 		t.Errorf("[%s %s]: %s", file, test.Name, err.Error())
 		return

@@ -208,6 +208,10 @@ var tests = []Test{
 	{`"{{#a}}{{b.c.d.e.name}}{{/a}}" == "Phil"`, map[string]interface{}{"a": map[string]interface{}{"b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Phil"}}}}}, "b": map[string]interface{}{"c": map[string]interface{}{"d": map[string]interface{}{"e": map[string]string{"name": "Wrong"}}}}}, `"Phil" == "Phil"`, nil},
 }
 
+func parseString(data string) (*template.Template, error) {
+	return template.ParseString(data, nil)
+}
+
 func render(tmpl *template.Template, context ...interface{}) (string, error) {
 	var buf bytes.Buffer
 	err := tmpl.Render(&buf, context...)
@@ -239,7 +243,7 @@ func fRenderInLayout(tmpl *template.Template, w io.Writer, layout *template.Temp
 	return layout.Render(w, allContext...)
 }
 func renderString(data string, errMissing bool, context ...interface{}) (string, error) {
-	tmpl, err := template.ParseString(data)
+	tmpl, err := parseString(data)
 	if err != nil {
 		return "", err
 	}
@@ -363,11 +367,11 @@ var layoutTests = []LayoutTest{
 }
 
 func renderInLayoutString(data, layout string, context interface{}) (string, error) {
-	tmplLay, err := template.ParseString(layout)
+	tmplLay, err := parseString(layout)
 	if err != nil {
 		return "", err
 	}
-	tmplDat, err := template.ParseString(data)
+	tmplDat, err := parseString(data)
 	if err != nil {
 		return "", err
 	}
@@ -389,12 +393,12 @@ func TestLayout(t *testing.T) {
 
 func TestLayoutToWriter(t *testing.T) {
 	for _, test := range layoutTests {
-		tmpl, err := template.ParseString(test.tmpl)
+		tmpl, err := parseString(test.tmpl)
 		if err != nil {
 			t.Error(err)
 			continue
 		}
-		layoutTmpl, err := template.ParseString(test.layout)
+		layoutTmpl, err := parseString(test.layout)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -519,7 +523,7 @@ func TestTags(t *testing.T) {
 }
 
 func testTags(t *testing.T, test *tagsTest) {
-	tmpl, err := template.ParseString(test.tmpl)
+	tmpl, err := parseString(test.tmpl)
 	if err != nil {
 		t.Error(err)
 		return
